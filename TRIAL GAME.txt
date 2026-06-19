@@ -1,0 +1,354 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Hungry Monster Cafe</title>
+    <style>
+        :root {
+            --ui-bg: rgba(255, 255, 255, 0.65);
+            --text-main: #2d3436;
+            --highlight: #d63031;
+        }
+
+        body, html {
+            margin: 0;
+            padding: 0;
+            height: 100%;
+            font-family: 'Arial Rounded MT Bold', 'Helvetica', sans-serif;
+            overflow: hidden;
+            background: url('background.gif') no-repeat center center fixed;
+            background-size: cover;
+        }
+
+        /* UI Container with Blur */
+        #game-container {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            width: 90vw;
+            height: 85vh;
+            background: var(--ui-bg);
+            backdrop-filter: blur(10px);
+            border-radius: 30px;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.3);
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            padding: 20px;
+            text-align: center;
+        }
+
+        /* Start Screen */
+        #start-screen {
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            height: 100%;
+        }
+
+        .clerk-img { width: 250px; cursor: pointer; }
+        .waving { animation: wave 2s ease-in-out infinite; }
+
+        /* Game Stage Layout */
+        #main-stage {
+            display: none;
+            grid-template-columns: 1fr 1.5fr 1fr;
+            width: 100%;
+            height: 100%;
+            gap: 20px;
+        }
+
+        .column { display: flex; flex-direction: column; align-items: center; justify-content: center; position: relative; }
+
+        /* Monster & Animations */
+        .monster-img { width: 300px; transition: transform 0.3s; }
+        .munching { animation: munch 0.4s ease-in-out 3; }
+        .bounce { animation: bounce 0.6s infinite; }
+        .shake { animation: shake 0.5s; }
+
+        /* Speech Bubble */
+        .speech-bubble {
+            background: white;
+            border-radius: 20px;
+            padding: 30px;
+            font-size: 32px;
+            position: relative;
+            box-shadow: 0 5px 15px rgba(0,0,0,0.1);
+            margin-bottom: 20px;
+            line-height: 1.5;
+        }
+
+        .highlight-text { color: var(--highlight); font-weight: bold; border-bottom: 3px solid var(--highlight); }
+
+        /* Interactive Elements */
+        .food-menu { display: grid; grid-template-columns: repeat(3, 1fr); gap: 15px; }
+        .food-item { 
+            font-size: 50px; cursor: pointer; transition: transform 0.2s; 
+            background: white; padding: 10px; border-radius: 15px;
+        }
+        .food-item:hover { transform: scale(1.1); }
+
+        .pouch-choice { font-size: 80px; cursor: pointer; margin: 20px; display: inline-block; }
+
+        button {
+            padding: 15px 40px; font-size: 28px; background: #6c5ce7; color: white;
+            border: none; border-radius: 50px; cursor: pointer; transition: 0.3s;
+        }
+        button:hover { background: #a29bfe; transform: scale(1.05); }
+
+        /* Animation Keyframes */
+        @keyframes wave { 0%, 100% { transform: rotate(0deg); } 50% { transform: rotate(10deg); } }
+        @keyframes munch { 0%, 100% { transform: scale(1); } 50% { transform: scale(1.15); } }
+        @keyframes bounce { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-20px); } }
+        @keyframes shake { 0%, 100% { transform: translateX(0); } 25% { transform: translateX(-10px); } 75% { transform: translateX(10px); } }
+        
+        .flying-food {
+            position: fixed;
+            z-index: 1000;
+            font-size: 50px;
+            transition: all 0.6s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+        }
+
+        .hidden { display: none !important; }
+    </style>
+</head>
+<body>
+
+<div id="game-container">
+    <!-- Start Screen -->
+    <div id="start-screen">
+        <h1 style="font-size: 50px;">Hungry Monster Cafe</h1>
+        <img src="clerk.png" class="clerk-img waving" alt="Clerk">
+        <button onclick="startGame()">Come in, please!</button>
+    </div>
+
+    <!-- Main Game Stage -->
+    <div id="main-stage">
+        <!-- Left: Customer -->
+        <div class="column">
+            <img id="monster" src="monster_1.gif" class="monster-img">
+        </div>
+
+        <!-- Middle: Interaction -->
+        <div class="column">
+            <div id="speech-bubble" class="speech-bubble">
+                I'm hungry!
+            </div>
+            
+            <div id="order-zone">
+                <div class="food-menu" id="menu">
+                    <!-- Food items injected by JS -->
+                </div>
+            </div>
+
+            <div id="pouch-zone" class="hidden">
+                <div class="pouch-choice" onclick="chooseOutcome('safe')">💵</div>
+                <div class="pouch-choice" onclick="chooseOutcome('mystery')">🎁</div>
+                <p style="font-size: 24px;">Choose: Safe $3 OR Mystery Pouch?</p>
+            </div>
+
+            <div id="result-zone" class="hidden">
+                <h2 id="feedback-text" style="font-size: 40px;"></h2>
+                <button onclick="nextCustomer()">Next Customer</button>
+            </div>
+        </div>
+
+        <!-- Right: Cashier -->
+        <div class="column">
+            <img id="cashier" src="clerk.png" style="width: 200px;">
+            <div style="font-size: 32px; margin-top: 20px;">Total: <span id="money-display">$0</span></div>
+        </div>
+    </div>
+</div>
+
+<script>
+    const foodOptions = [
+        { emoji: '🍔', name: 'a hamburger' },
+        { emoji: '🍕', name: 'a pizza' },
+        { emoji: '🌭', name: 'a hot dog' },
+        { emoji: '🍎', name: 'an apple' },
+        { emoji: '🌮', name: 'a taco' },
+        { emoji: '🍣', name: 'some sushi' }
+    ];
+
+    let currentOrder = [];
+    let itemsEaten = 0;
+    let totalMoney = 0;
+    let lastMonster = "";
+    let isTransitioning = false;
+
+    // Audio setup
+    const sounds = {
+        munch: new Audio('munch.mp3'),
+        burp: new Audio('burp.mp3'),
+        happy: new Audio('monster_happy.mp3'),
+        laugh: new Audio('monster_laugh.mp3')
+    };
+
+    function stopAllSounds() {
+        Object.values(sounds).forEach(s => { s.pause(); s.currentTime = 0; });
+    }
+
+    function startGame() {
+        document.getElementById('start-screen').classList.add('hidden');
+        document.getElementById('main-stage').style.display = 'grid';
+        nextCustomer();
+    }
+
+    function nextCustomer() {
+        stopAllSounds();
+        isTransitioning = false;
+        itemsEaten = 0;
+        
+        // Randomize Monster (No repeats)
+        let monsters = ['monster_1.gif', 'monster_2.gif', 'monster_3.gif'];
+        let choice;
+        do {
+            choice = monsters[Math.floor(Math.random() * monsters.length)];
+        } while (choice === lastMonster);
+        lastMonster = choice;
+        document.getElementById('monster').src = choice;
+        document.getElementById('monster').className = "monster-img";
+        document.getElementById('cashier').className = "";
+
+        // UI Reset
+        document.getElementById('order-zone').classList.remove('hidden');
+        document.getElementById('pouch-zone').classList.add('hidden');
+        document.getElementById('result-zone').classList.add('hidden');
+
+        // Create Order
+        currentOrder = [...foodOptions].sort(() => 0.5 - Math.random()).slice(0, 3);
+        updateSpeech();
+        renderMenu();
+    }
+
+    function renderMenu() {
+        const menu = document.getElementById('menu');
+        menu.innerHTML = '';
+        foodOptions.forEach(food => {
+            const div = document.createElement('div');
+            div.className = 'food-item';
+            div.innerHTML = food.emoji;
+            div.onclick = (e) => feedMonster(food, e);
+            menu.appendChild(div);
+        });
+    }
+
+    function updateSpeech() {
+        let text = "I want ";
+        currentOrder.forEach((item, index) => {
+            if (index < itemsEaten) {
+                text += `<span class="highlight-text">${item.name}</span>`;
+            } else {
+                text += "_______";
+            }
+            if (index < 2) text += " and ";
+        });
+        document.getElementById('speech-bubble').innerHTML = text + "!";
+    }
+
+    function feedMonster(food, event) {
+        if (isTransitioning) return;
+        
+        const targetItem = currentOrder[itemsEaten];
+        if (food.emoji === targetItem.emoji) {
+            animateFood(event.target, food.emoji);
+            itemsEaten++;
+            updateSpeech();
+            
+            if (itemsEaten === 3) {
+                isTransitioning = true;
+                setTimeout(showPouchChoice, 1500);
+            }
+        }
+    }
+
+    function animateFood(element, emoji) {
+        const rect = element.getBoundingClientRect();
+        const monsterRect = document.getElementById('monster').getBoundingClientRect();
+        
+        const flyer = document.createElement('div');
+        flyer.className = 'flying-food';
+        flyer.innerHTML = emoji;
+        flyer.style.left = rect.left + 'px';
+        flyer.style.top = rect.top + 'px';
+        document.body.appendChild(flyer);
+
+        sounds.munch.play();
+
+        setTimeout(() => {
+            flyer.style.left = (monsterRect.left + 100) + 'px';
+            flyer.style.top = (monsterRect.top + 100) + 'px';
+            flyer.style.transform = 'scale(2) rotate(360deg)';
+        }, 10);
+
+        setTimeout(() => {
+            flyer.remove();
+            document.getElementById('monster').classList.add('munching');
+            setTimeout(() => document.getElementById('monster').classList.remove('munching'), 1200);
+        }, 600);
+    }
+
+    function showPouchChoice() {
+        sounds.burp.play();
+        document.getElementById('order-zone').classList.add('hidden');
+        document.getElementById('pouch-zone').classList.remove('hidden');
+        document.getElementById('speech-bubble').innerText = "BURP! Thank you. Here is a tip...";
+    }
+
+    function chooseOutcome(type) {
+        let win = false;
+        let amount = 0;
+        let msg = "";
+
+        if (type === 'safe') {
+            amount = 3;
+            msg = "You took the safe $3!";
+            // Logic: Is there a bigger tip in the pouch?
+            const hiddenTip = [5, 7, 10, 0][Math.floor(Math.random() * 4)];
+            win = (hiddenTip === 0); // Success if you avoided a potential prank
+        } else {
+            const outcomes = [5, 7, 10, -1]; // -1 represents poop
+            const result = outcomes[Math.floor(Math.random() * outcomes.length)];
+            
+            if (result === -1) {
+                amount = 0;
+                msg = "OH NO! Pranked! 💩💩💩";
+                win = false;
+            } else {
+                amount = result;
+                msg = `BIG TIP! You got $${amount}!`;
+                win = true;
+            }
+        }
+
+        totalMoney += amount;
+        document.getElementById('money-display').innerText = `$${totalMoney}`;
+        showFinalFeedback(win, msg);
+    }
+
+    function showFinalFeedback(win, msg) {
+        document.getElementById('pouch-zone').classList.add('hidden');
+        document.getElementById('result-zone').classList.remove('hidden');
+        document.getElementById('feedback-text').innerText = msg;
+
+        const monster = document.getElementById('monster');
+        const cashier = document.getElementById('cashier');
+
+        if (win) {
+            monster.classList.add('bounce');
+            cashier.classList.add('bounce');
+            sounds.happy.play();
+        } else {
+            monster.classList.add('shake');
+            cashier.classList.add('shake');
+            sounds.laugh.play();
+        }
+    }
+</script>
+
+</body>
+</html>
